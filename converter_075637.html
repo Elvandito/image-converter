@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Format Conversion</title>
+    <script src="https://stuk.github.io/jszip/dist/jszip.min.js"></script>
+    <style>
+        * { font-family: Arial, sans-serif; box-sizing: border-box; }
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; }
+        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2); text-align: center; width: 300px; }
+        h2 { color: gray; font-size: 24px; margin-bottom: 10px; }
+        label { display: block; margin-top: 15px; color: gray; font-size: 14px; }
+        input, button { width: 100%; padding: 10px; margin-top: 5px; border-radius: 5px; border: 1px solid #ddd; font-size: 14px; }
+        button { background: #9C89B8; color: white; cursor: pointer; border: none; margin-top: 20px; font-size: 16px; }
+        button:hover { background: #7A69A6; }
+        #progress-container { width: 100%; background: #eee; margin-top: 15px; height: 8px; border-radius: 5px; overflow: hidden; display: none; }
+        #progress-bar { width: 0%; height: 100%; background: #9C89B8; transition: width 0.4s; }
+        #downloadLink { display: none; margin-top: 15px; font-size: 16px; background: #9C89B8; color: white; padding: 10px; border-radius: 5px; text-decoration: none; font-weight: bold; }
+        .format-container { margin-top: 10px; border: 1px solid #ddd; border-radius: 5px; padding: 8px; cursor: pointer; transition: all 0.3s ease; text-align: center; }
+        .format-container.active { padding: 15px; }
+        .format-options { display: none; grid-template-columns: repeat(2, 1fr); gap: 5px; margin-top: 10px; }
+        .format-container.active .format-options { display: grid; }
+        .format-options label { display: flex; align-items: center; justify-content: space-between; background: #f3f3f3; padding: 8px; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Image Format Conversion</h2>
+        <label for="fileInput">Input file (ZIP)</label>
+        <input type="file" id="fileInput" accept=".zip">
+        <small id="fileSize">File size: -</small>
+
+        <div class="format-container" onclick="toggleFormatOptions()">
+            <label>Converter Options</label>
+            <div class="format-options">
+                <label><input type="radio" name="format" value="jpg"> JPG</label>
+                <label><input type="radio" name="format" value="jpeg"> JPEG</label>
+                <label><input type="radio" name="format" value="png"> PNG</label>
+                <label><input type="radio" name="format" value="gif"> GIF</label>
+                <label><input type="radio" name="format" value="tiff"> TIFF</label>
+                <label><input type="radio" name="format" value="bmp"> BMP</label>
+                <label><input type="radio" name="format" value="webp"> WebP</label>
+            </div>
+        </div>
+
+        <label for="zipName">Result ZIP Name (Optional)</label>
+        <input type="text" id="zipName" placeholder="Enter Text">
+
+        <label>Progress</label>
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+
+        <button onclick="processZip()">Convert!</button>
+      
+        <a id="downloadLink">Download ZIP</a>
+    </div>
+
+    <script>
+        function toggleFormatOptions() {
+            document.querySelector('.format-container').classList.toggle('active');
+        }
+
+        document.getElementById("fileInput").addEventListener("change", function() {
+            const file = this.files[0];
+            if (file) {
+                const fileSizeKB = file.size / 1024;
+                document.getElementById("fileSize").textContent = "Ukuran file: " + fileSizeKB.toFixed(2) + " KB";
+            } else {
+                document.getElementById("fileSize").textContent = "Ukuran file: -";
+            }
+        });
+
+        async function processZip() {
+            const fileInput = document.getElementById("fileInput").files[0];
+            const selectedFormat = document.querySelector("input[name='format']:checked");
+            const zipName = document.getElementById("zipName").value || "converted_images";
+            const progressBar = document.getElementById("progress-bar");
+            const progressContainer = document.getElementById("progress-container");
+            const downloadLink = document.getElementById("downloadLink");
+
+            if (!fileInput || !selectedFormat) {
+                alert("Select the ZIP file and conversion format first!");
+                return;
+            }
+
+            progressContainer.style.display = "block";
+            progressBar.style.width = "0%";
+
+            let zip = new JSZip();
+            let outputZip = new JSZip();
+
+            const zipData = await fileInput.arrayBuffer();
+            await zip.loadAsync(zipData);
+
+            let files = Object.keys(zip.files);
+            let completed = 0;
+
+            for (let fileName of files) {
+                if (!fileName.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)) continue;
+                
+                let fileData = await zip.file(fileName).async("blob");
+                let img = new Image();
+                img.src = URL.createObjectURL(fileData);
+                
+                await new Promise(resolve => img.onload = resolve);
+                
+                let canvas = document.createElement("canvas");
+                let ctx = canvas.getContext("2d");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+
+                let newFormat = selectedFormat.value;
+                let convertedBlob = await new Promise(resolve => canvas.toBlob(resolve, "image/" + newFormat));
+
+                outputZip.file(fileName.split(".")[0] + "." + newFormat, convertedBlob);
+                completed++;
+                progressBar.style.width = (completed / files.length) * 100 + "%";
+            }
+
+            let finalZip = await outputZip.generateAsync({ type: "blob" });
+            let zipUrl = URL.createObjectURL(finalZip);
+            downloadLink.href = zipUrl;
+            downloadLink.download = zipName + ".zip";
+            downloadLink.style.display = "block";
+        }
+    </script>
+</body>
+</html>
